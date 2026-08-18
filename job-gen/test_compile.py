@@ -11,6 +11,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+TIMEOUT = 900
+
 PACKAGES = ["geometry", "hyperref", "enumitem", "titlesec", "fontawesome5"]
 
 DOCUMENT = """\\documentclass[letterpaper,11pt]{article}
@@ -36,9 +38,13 @@ def main() -> int:
                 capture_output=True,
                 text=True,
                 cwd=workdir,
+                timeout=TIMEOUT,
             )
         except FileNotFoundError:
             print("FAIL: tectonic binary not found on PATH", file=sys.stderr)
+            return 1
+        except subprocess.TimeoutExpired:
+            print(f"FAIL: tectonic timed out after {TIMEOUT}s", file=sys.stderr)
             return 1
 
         if result.returncode != 0 or not (workdir / "prewarm.pdf").exists():

@@ -40,7 +40,7 @@ curl -X POST localhost:8080/api/generate \
   -OJ
 ```
 
-Returns `{Company}_Application.zip` containing `resume.pdf` and, when requested, `cover_letter.pdf`. A Tectonic failure returns 500 with the full compile log in `detail`; a compile exceeding 180s returns 504.
+Returns `{Company}_Application.zip` containing `resume.pdf` and, when requested, `cover_letter.pdf`. A Tectonic failure returns 500 with the full compile log in `detail`; a compile exceeding 180s also returns 500.
 
 ## Deploying
 

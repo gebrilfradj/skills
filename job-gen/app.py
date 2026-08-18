@@ -93,7 +93,7 @@ def compile_tex(latex: str, workdir: Path, name: str) -> Path:
     except subprocess.TimeoutExpired as exc:
         logger.error("tectonic timed out on %s.tex after %ss", name, COMPILE_TIMEOUT)
         raise HTTPException(
-            status_code=504,
+            status_code=500,
             detail=f"Tectonic timed out compiling {name}.tex after {COMPILE_TIMEOUT}s",
         ) from exc
     except FileNotFoundError as exc:
