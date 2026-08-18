@@ -17,7 +17,8 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 BASE_DIR = Path(__file__).parent
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.7-flash"
+THINKING_LEVEL = "HIGH"
 COMPILE_TIMEOUT = 180
 
 load_dotenv(BASE_DIR / ".env")
@@ -67,7 +68,10 @@ def generate_latex(client: genai.Client, system_prompt: str, user_prompt: str) -
         response = client.models.generate_content(
             model=MODEL,
             contents=user_prompt,
-            config=types.GenerateContentConfig(system_instruction=system_prompt),
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                thinking_config=types.ThinkingConfig(thinking_level=THINKING_LEVEL),
+            ),
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Gemini request failed: {exc}") from exc
