@@ -8,8 +8,7 @@ Requires Python 3.11+, a `tectonic` binary on `PATH`, and a Google AI Studio API
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # then set GEMINI_API_KEY
-export GEMINI_API_KEY=...
+export GEMINI_API_KEY=...   # see .env.example
 uvicorn app:app --reload --port 8080
 ```
 
