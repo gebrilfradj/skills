@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>job-gen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-neutral-950 text-neutral-100 min-h-screen">
+    <main class="mx-auto w-full max-w-lg px-4 py-8">
+      <h1 class="text-2xl font-semibold">job-gen</h1>
+      <p class="mt-1 text-sm text-neutral-400">Tailored resume and cover letter, compiled to PDF.</p>
+
+      <form id="form" class="mt-6 space-y-4">
+        <div>
+          <label for="company" class="block text-sm text-neutral-300">Company name</label>
+          <input id="company" name="company" required
+            class="mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-2 text-base outline-none focus:border-neutral-600" />
+        </div>
+
+        <div>
+          <label for="role" class="block text-sm text-neutral-300">Role / title</label>
+          <input id="role" name="role" required
+            class="mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-2 text-base outline-none focus:border-neutral-600" />
+        </div>
+
+        <div>
+          <label for="jd" class="block text-sm text-neutral-300">Job description</label>
+          <textarea id="jd" name="jd" rows="8" required
+            class="mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-2 text-base outline-none focus:border-neutral-600"></textarea>
+        </div>
+
+        <label class="flex items-center gap-2 text-sm text-neutral-300">
+          <input id="cover" type="checkbox" class="h-4 w-4 rounded border-neutral-700 bg-neutral-900" />
+          Include cover letter
+        </label>
+
+        <button id="submit" type="submit"
+          class="w-full rounded-lg bg-neutral-100 px-4 py-3 font-medium text-neutral-950 disabled:opacity-50">
+          Generate PDFs
+        </button>
+      </form>
+
+      <p id="error" class="mt-4 hidden whitespace-pre-wrap rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-300"></p>
+    </main>
+
+    <script>
+      const form = document.getElementById("form");
+      const button = document.getElementById("submit");
+      const error = document.getElementById("error");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        error.classList.add("hidden");
+        button.disabled = true;
+        button.textContent = "Generating...";
+
+        try {
+          const response = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              company: document.getElementById("company").value,
+              role: document.getElementById("role").value,
+              job_description: document.getElementById("jd").value,
+              include_cover_letter: document.getElementById("cover").checked,
+            }),
+          });
+
+          if (!response.ok) {
+            let message = `Request failed (${response.status})`;
+            try {
+              const body = await response.json();
+              if (body.detail) message = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+            } catch (_) {}
+            throw new Error(message);
+          }
+
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${document.getElementById("company").value.replace(/[^A-Za-z0-9_-]+/g, "_")}_Application.zip`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          error.textContent = err.message;
+          error.classList.remove("hidden");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Generate PDFs";
+        }
+      });
+    </script>
+  </body>
+</html>
