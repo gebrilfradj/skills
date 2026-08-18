@@ -13,6 +13,12 @@
 
       <form id="form" class="mt-6 space-y-4">
         <div>
+          <label for="key" class="block text-sm text-neutral-300">Access key</label>
+          <input id="key" type="password" required
+            class="mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-2 text-base outline-none focus:border-neutral-600" />
+        </div>
+
+        <div>
           <label for="company" class="block text-sm text-neutral-300">Company name</label>
           <input id="company" name="company" required
             class="mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-2 text-base outline-none focus:border-neutral-600" />
@@ -48,6 +54,9 @@
       const form = document.getElementById("form");
       const button = document.getElementById("submit");
       const error = document.getElementById("error");
+      const key = document.getElementById("key");
+
+      key.value = localStorage.getItem("jobGenAccessKey") || "";
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -58,7 +67,10 @@
         try {
           const response = await fetch("/api/generate", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Access-Token": key.value,
+            },
             body: JSON.stringify({
               company: document.getElementById("company").value,
               role: document.getElementById("role").value,
@@ -68,6 +80,7 @@
           });
 
           if (!response.ok) {
+            if (response.status === 401) localStorage.removeItem("jobGenAccessKey");
             let message = `Request failed (${response.status})`;
             try {
               const body = await response.json();
@@ -76,6 +89,7 @@
             throw new Error(message);
           }
 
+          localStorage.setItem("jobGenAccessKey", key.value);
           const blob = await response.blob();
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");

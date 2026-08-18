@@ -1,12 +1,15 @@
+import logging
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from google import genai
 from google.genai import types
@@ -15,6 +18,11 @@ from starlette.background import BackgroundTask
 
 BASE_DIR = Path(__file__).parent
 MODEL = "gemini-2.5-flash"
+COMPILE_TIMEOUT = 180
+
+load_dotenv(BASE_DIR / ".env")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("job-gen")
 
 BASE_RESUME = (BASE_DIR / "base_resume.tex").read_text(encoding="utf-8")
 RESUME_PROMPT = (BASE_DIR / "resume_prompt.txt").read_text(encoding="utf-8")
@@ -36,6 +44,15 @@ def get_client() -> genai.Client:
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
     return genai.Client(api_key=api_key)
+
+
+def require_token(header_token: str | None, query_token: str | None) -> None:
+    expected = os.environ.get("ACCESS_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=500, detail="ACCESS_TOKEN is not set")
+    supplied = header_token or query_token or ""
+    if not secrets.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="Invalid access key")
 
 
 def extract_latex(text: str) -> str:
@@ -61,21 +78,34 @@ def generate_latex(client: genai.Client, system_prompt: str, user_prompt: str) -
     return latex
 
 
-def compile_pdf(latex: str, workdir: Path, name: str) -> Path:
+def compile_tex(latex: str, workdir: Path, name: str) -> Path:
     tex_path = workdir / f"{name}.tex"
     tex_path.write_text(latex, encoding="utf-8")
 
-    result = subprocess.run(
-        ["tectonic", "--outdir", str(workdir), str(tex_path)],
-        capture_output=True,
-        text=True,
-        cwd=workdir,
-    )
+    try:
+        result = subprocess.run(
+            ["tectonic", "--chatter=minimal", "--outdir", str(workdir), str(tex_path)],
+            capture_output=True,
+            text=True,
+            cwd=workdir,
+            timeout=COMPILE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        logger.error("tectonic timed out on %s.tex after %ss", name, COMPILE_TIMEOUT)
+        raise HTTPException(
+            status_code=504,
+            detail=f"Tectonic timed out compiling {name}.tex after {COMPILE_TIMEOUT}s",
+        ) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="tectonic binary not found on PATH") from exc
+
     pdf_path = workdir / f"{name}.pdf"
     if result.returncode != 0 or not pdf_path.exists():
+        log = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+        logger.error("tectonic failed on %s.tex (exit %s)\n%s", name, result.returncode, log)
         raise HTTPException(
             status_code=500,
-            detail=f"Tectonic failed to compile {name}.tex:\n{result.stderr.strip()}",
+            detail=f"Tectonic failed to compile {name}.tex:\n{log}",
         )
     return pdf_path
 
@@ -91,7 +121,12 @@ def index() -> HTMLResponse:
 
 
 @app.post("/api/generate")
-def generate(payload: GenerateRequest) -> FileResponse:
+def generate(
+    payload: GenerateRequest,
+    x_access_token: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+) -> FileResponse:
+    require_token(x_access_token, token)
     client = get_client()
     workdir = Path(tempfile.mkdtemp(prefix="job-gen-"))
     try:
@@ -103,7 +138,7 @@ def generate(payload: GenerateRequest) -> FileResponse:
             f"Job description:\n{payload.job_description}\n\n"
             f"Base resume LaTeX:\n{BASE_RESUME}",
         )
-        pdfs = [compile_pdf(resume_latex, workdir, "resume")]
+        pdfs = [compile_tex(resume_latex, workdir, "resume")]
 
         if payload.include_cover_letter:
             cover_latex = generate_latex(
@@ -114,7 +149,7 @@ def generate(payload: GenerateRequest) -> FileResponse:
                 f"Job description:\n{payload.job_description}\n\n"
                 f"Tailored resume LaTeX:\n{resume_latex}",
             )
-            pdfs.append(compile_pdf(cover_latex, workdir, "cover_letter"))
+            pdfs.append(compile_tex(cover_latex, workdir, "cover_letter"))
 
         zip_path = workdir / f"{safe_name(payload.company, 'Company')}_Application.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:

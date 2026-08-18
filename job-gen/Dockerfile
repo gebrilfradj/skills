@@ -1,7 +1,9 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    TECTONIC_VERSION=0.15.0
+    PYTHONDONTWRITEBYTECODE=1 \
+    TECTONIC_VERSION=0.15.0 \
+    TECTONIC_CACHE_DIR=/var/cache/tectonic
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -17,6 +19,9 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . ./
+
+# Bake the CTAN package cache into the image so the first request is not slow.
+RUN python test_compile.py
 
 EXPOSE 8080
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
